@@ -76,7 +76,7 @@ async fn main() -> Result<()> {
     // Also open the file for streaming to transcription service
     // We need to read the raw audio data for transcription
     let mut wav_reader = WavReader::open(&file_path)?;
-    let wav_spec = wav_reader.spec();
+    let _wav_spec = wav_reader.spec();
     
     // Collect all samples for streaming
     let samples: Vec<i16> = wav_reader.samples::<i16>()

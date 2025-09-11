@@ -7,12 +7,10 @@ use anyhow::Result;
 use clap::Parser;
 use futures_util::StreamExt;
 use hound::WavReader;
-use std::fs::File;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time;
 use tokio_stream::wrappers::ReceiverStream;
-use tonic::transport::Channel;
 use tracing::info;
 
 // Import generated protobuf types
