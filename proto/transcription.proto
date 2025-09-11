@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package transcription;
+
+// The transcription service provides real-time speech-to-text capabilities
+service TranscriptionService {
+  // Bidirectional streaming: send audio chunks, receive transcriptions
+  rpc StreamTranscribe(stream AudioChunk) returns (stream TranscriptionResult);
+  
+  // Unary call for single audio file transcription
+  rpc TranscribeFile(AudioFile) returns (TranscriptionResponse);
+  
+  // Get available models and languages
+  rpc GetCapabilities(Empty) returns (Capabilities);
+  
+  // Health check
+  rpc HealthCheck(Empty) returns (HealthStatus);
+}
+
+// Audio chunk for streaming
+message AudioChunk {
+  bytes audio_data = 1;  // PCM16 audio data (16-bit, 16kHz, mono)
+  string session_id = 2; // Optional session ID for tracking
+  AudioConfig config = 3; // Optional config (only needed in first chunk)
+}
+
+// Audio configuration
+message AudioConfig {
+  string language = 1;    // Language code (e.g., "en", "es", "auto")
+  string task = 2;        // "transcribe" or "translate"
+  string model = 3;       // Model size: "tiny", "base", "small", "medium", "large-v3"
+  int32 sample_rate = 4; // Sample rate (default: 16000)
+  bool vad_enabled = 5;   // Voice Activity Detection
+}
+
+// Transcription result for streaming
+message TranscriptionResult {
+  string text = 1;           // Transcribed text
+  float start_time = 2;      // Start time in seconds
+  float end_time = 3;        // End time in seconds
+  bool is_final = 4;         // Is this a final result?
+  float confidence = 5;      // Confidence score (0-1)
+  string language = 6;       // Detected language
+  string session_id = 7;     // Session ID for tracking
+  int64 timestamp_ms = 8;    // Server timestamp in milliseconds
+}
+
+// Complete audio file for transcription
+message AudioFile {
+  bytes audio_data = 1;      // Complete audio file data
+  string format = 2;         // Format: "wav", "mp3", "webm", "raw_pcm16"
+  AudioConfig config = 3;    // Audio configuration
+}
+
+// Response for file transcription
+message TranscriptionResponse {
+  repeated TranscriptionSegment segments = 1;
+  string full_text = 2;      // Complete transcription
+  string detected_language = 3;
+  float duration_seconds = 4;
+}
+
+// Transcription segment
+message TranscriptionSegment {
+  string text = 1;
+  float start_time = 2;
+  float end_time = 3;
+  float confidence = 4;
+}
+
+// Service capabilities
+message Capabilities {
+  repeated string available_models = 1;
+  repeated string supported_languages = 2;
+  repeated string supported_formats = 3;
+  int32 max_audio_length_seconds = 4;
+  bool streaming_supported = 5;
+  bool vad_supported = 6;
+}
+
+// Health status
+message HealthStatus {
+  bool healthy = 1;
+  string status = 2;
+  string model_loaded = 3;
+  int64 uptime_seconds = 4;
+  int32 active_sessions = 5;
+}
+
+// Empty message for requests without parameters
+message Empty {}

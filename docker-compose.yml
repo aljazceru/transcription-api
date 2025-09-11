@@ -1,0 +1,105 @@
+services:
+  # Main service with GPU support (if available)
+  # For CPU-only: Use --profile cpu or set CUDA_VISIBLE_DEVICES=""
+  transcription-api:
+    build: 
+      context: .
+      dockerfile: ${DOCKERFILE:-Dockerfile}  # Can use Dockerfile.pytorch for faster builds
+    container_name: transcription-api
+    environment:
+      # Model configuration
+      - MODEL_PATH=${MODEL_PATH:-large-v3}  # Options: tiny, base, small, medium, large, large-v2, large-v3
+      
+      # Model cache paths (shared with main project)
+      - HF_HOME=/app/models
+      - TORCH_HOME=/app/models
+      - TRANSFORMERS_CACHE=/app/models
+      
+      # Server ports
+      - GRPC_PORT=50051
+      - WEBSOCKET_PORT=8765
+      - ENABLE_WEBSOCKET=true
+      
+      # Performance tuning
+      - OMP_NUM_THREADS=4
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}  # GPU 0 by default
+      
+    ports:
+      - "50051:50051"  # gRPC port
+      - "8765:8765"    # WebSocket port
+    
+    volumes:
+      # Model cache - prevents re-downloading models
+      - whisper-models:/app/models
+      
+      # Optional: Mount SimulStreaming if available
+      # - ./SimulStreaming:/app/SimulStreaming
+    
+    restart: unless-stopped
+    
+    # Resource limits (adjust based on your system)
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+          # GPU support (requires nvidia-docker2 or Docker 19.03+)
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import grpc; channel = grpc.insecure_channel('localhost:50051'); channel.channel_ready()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # CPU-only service (for systems without GPU)
+  transcription-api-cpu:
+    profiles: ["cpu"]  # Only start with --profile cpu
+    build: 
+      context: .
+      dockerfile: ${DOCKERFILE:-Dockerfile.pytorch}
+    container_name: transcription-api-cpu
+    environment:
+      - MODEL_PATH=${MODEL_PATH:-base}  # Smaller model for CPU
+      - HF_HOME=/app/models
+      - TORCH_HOME=/app/models
+      - TRANSFORMERS_CACHE=/app/models
+      - GRPC_PORT=50051
+      - WEBSOCKET_PORT=8765
+      - ENABLE_WEBSOCKET=true
+      - CUDA_VISIBLE_DEVICES=  # No GPU
+    ports:
+      - "50051:50051"
+      - "8765:8765"
+    volumes:
+      - whisper-models:/app/models
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+          # No GPU devices for CPU profile
+    healthcheck:
+      test: ["CMD", "python", "-c", "import grpc; channel = grpc.insecure_channel('localhost:50051'); channel.channel_ready()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  # Share models with the main transcription project
+  # This references the volume from the parent project
+  whisper-models:
+    external: true
+    name: real-time-transcriptions_whisper-models
