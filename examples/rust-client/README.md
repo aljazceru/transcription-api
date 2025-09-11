@@ -60,6 +60,56 @@ cargo run --bin live-transcribe
 cargo run --bin live-transcribe -- --server http://localhost:50051 --language en
 ```
 
+### 5. `stdin-transcribe` - Transcribe Audio from stdin
+Accepts audio data from stdin, perfect for piping from other tools.
+
+```bash
+# Pipe audio from parec (PulseAudio/PipeWire)
+parec --format=s16le --rate=16000 --channels=1 | cargo run --bin stdin-transcribe
+
+# With options
+parec --format=s16le --rate=16000 --channels=1 | \
+  cargo run --bin stdin-transcribe -- --language en --no-vad --chunk-seconds 2.5
+```
+
+### 6. `system-audio` - System Audio Capture
+Attempts to capture system audio using available audio devices.
+
+```bash
+# List available audio devices
+cargo run --bin system-audio -- --list-devices
+
+# Capture from specific device
+cargo run --bin system-audio -- --device pulse
+```
+
+## Video Call & System Audio Transcription
+
+### Transcribe Video Calls (Zoom, Teams, Meet, etc.)
+Use the provided script to transcribe any video call or system audio:
+
+```bash
+# Transcribe system audio (video calls, YouTube, etc.)
+./transcribe_video_call.sh
+
+# List available audio sources
+./transcribe_video_call.sh --list
+
+# Use microphone instead of system audio
+./transcribe_video_call.sh --microphone
+```
+
+### Quick YouTube/System Audio Test
+```bash
+# Test with any playing audio (YouTube, music, etc.)
+./test_youtube.sh
+```
+
+**Note**: System audio capture requires `pulseaudio-utils` package:
+```bash
+sudo apt-get install pulseaudio-utils
+```
+
 ## Building
 
 ```bash
@@ -106,6 +156,13 @@ The `realtime-playback` binary uses the `rodio` library to:
 - For live transcription: A working microphone
 - For playback: Audio output device (speakers/headphones)
 
+## System Requirements
+
+### For Video Call Transcription (Ubuntu/Linux)
+- PulseAudio utilities: `sudo apt-get install pulseaudio-utils`
+- PipeWire or PulseAudio audio server
+- The monitor audio source must be available
+
 ## Troubleshooting
 
 ### "Connection refused" error
@@ -122,5 +179,12 @@ docker compose up
 
 ### Poor transcription quality
 - Use a larger model (e.g., `--model large-v3`)
-- Enable VAD to filter noise (`--vad`)
+- For system audio: use `--no-vad` flag to disable voice activity detection
 - Ensure audio quality is good (16kHz or higher recommended)
+- Use 2.5-3 second chunks for optimal accuracy
+
+### System audio not working
+- Install pulseaudio-utils: `sudo apt-get install pulseaudio-utils`
+- Check monitor source exists: `./transcribe_video_call.sh --list`
+- Make sure audio is playing when you start transcription
+- Use headphones to avoid echo/feedback

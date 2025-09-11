@@ -343,59 +343,15 @@ grpcurl -plaintext localhost:50051 transcription.TranscriptionService/HealthChec
 python test_client.py
 ```
 
-## Production Deployment
+## R&D Project Notice
 
-### Docker Swarm
+This is a research and development project for exploring real-time transcription capabilities. It is not production-ready and should be used for experimentation and development purposes only.
 
-```bash
-docker stack deploy -c docker-compose.yml transcription
-```
-
-### Kubernetes
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: transcription-api
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: transcription-api
-  template:
-    metadata:
-      labels:
-        app: transcription-api
-    spec:
-      containers:
-      - name: transcription-api
-        image: transcription-api:latest
-        ports:
-        - containerPort: 50051
-          name: grpc
-        - containerPort: 8765
-          name: websocket
-        env:
-        - name: MODEL_PATH
-          value: "base"
-        resources:
-          requests:
-            memory: "4Gi"
-            cpu: "2"
-          limits:
-            memory: "8Gi"
-            cpu: "4"
-```
-
-### Security
-
-For production:
-1. Enable TLS for gRPC
-2. Use WSS for WebSocket
-3. Add authentication
-4. Rate limiting
-5. Input validation
+### Known Limitations
+- Memory usage scales with model size (1.5-6GB for large models)
+- Single model instance shared across connections
+- No authentication or rate limiting
+- Not optimized for high-concurrency production use
 
 ## License
 
