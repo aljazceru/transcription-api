@@ -159,14 +159,18 @@ class TranscriptionEngine:
         """Get the shared model instance from ModelManager"""
         return self.model_manager.get_model()
     
-    def is_speech(self, audio: np.ndarray, energy_threshold: float = 0.002, zero_crossing_threshold: int = 50) -> bool:
+    def is_speech(self, audio: np.ndarray, energy_threshold: float = 0.005, zero_crossing_threshold: int = 50) -> bool:
         """
-        Simple Voice Activity Detection
+        Enhanced Voice Activity Detection
         Returns True if the audio chunk likely contains speech
         """
         # Check if audio is too quiet (likely silence)
         energy = np.sqrt(np.mean(audio**2))
-        if energy < energy_threshold:
+        if energy < energy_threshold:  # Increased threshold for better filtering
+            return False
+        
+        # Check if audio is too loud (likely noise/distortion)
+        if energy > 0.95:
             return False
         
         # Check zero crossing rate (helps distinguish speech from noise)
@@ -175,6 +179,10 @@ class TranscriptionEngine:
         # Speech typically has moderate zero crossing rate
         # Pure noise tends to have very high zero crossing rate
         if zero_crossings > len(audio) * zero_crossing_threshold / SAMPLE_RATE:
+            return False
+        
+        # Check for consistent silence (flat signal)
+        if np.std(audio) < 0.001:
             return False
             
         return True
@@ -216,24 +224,37 @@ class TranscriptionEngine:
                         audio = np.pad(audio, (0, SAMPLE_RATE - len(audio)))
                     
                     # Use more conservative settings to reduce hallucinations
+                    # Force English if specified to prevent language switching
+                    forced_language = None if language == "auto" else language
+                    if language == "en" or language == "english":
+                        forced_language = "en"
+                    
                     result = model.transcribe(
                         audio,
-                        language=None if language == "auto" else language,
+                        language=forced_language,
                         fp16=self.device == "cuda",
                         temperature=0.0,  # More deterministic, less hallucination
-                        no_speech_threshold=0.6,  # Higher threshold for detecting non-speech
-                        logprob_threshold=-1.0,  # Filter out low probability results
-                        compression_ratio_threshold=2.4  # Filter out repetitive results
+                        no_speech_threshold=0.8,  # Much higher threshold for detecting non-speech
+                        logprob_threshold=-0.5,  # Stricter filtering of low probability results
+                        compression_ratio_threshold=2.0,  # Stricter filtering of repetitive results
+                        condition_on_previous_text=False,  # Don't use previous text as context (reduces hallucination chains)
+                        initial_prompt=None  # Don't use initial prompt to avoid biasing
                     )
                     
                     if result and result.get('text'):
                         text = result['text'].strip()
                         
-                        # Filter out common hallucinations
+                        # Filter out common hallucinations (expanded list)
                         hallucination_phrases = [
                             "thank you", "thanks", "you", "uh", "um", 
                             "thank you for watching", "please subscribe",
-                            "bye", "bye-bye", ".", "...", ""
+                            "bye", "bye-bye", ".", "...", "",
+                            "thank you for watching.", "thanks for watching",
+                            "please like and subscribe", "hit the bell",
+                            "see you next time", "goodbye", "the end",
+                            "[music]", "[applause]", "(music)", "(applause)",
+                            "foreign", "[foreign]", "aqui", "ici", "здесь",
+                            "谢谢", "ありがとう", "شكرا", "धन्यवाद"
                         ]
                         
                         # Check if the result is just a hallucination
@@ -242,11 +263,32 @@ class TranscriptionEngine:
                             logger.debug(f"Filtered out hallucination: {text}")
                             return None
                         
+                        # Filter out very short text that's likely noise
+                        if len(text_lower) <= 2 and text_lower not in ["ok", "no", "hi", "go"]:
+                            logger.debug(f"Filtered out short text: {text}")
+                            return None
+                        
                         # Check for repetitive text (another sign of hallucination)
                         words = text.lower().split()
                         if len(words) > 1 and len(set(words)) == 1:
                             logger.debug(f"Filtered out repetitive text: {text}")
                             return None
+                        
+                        # Filter out text that's mostly punctuation or special characters
+                        alphanumeric_ratio = sum(c.isalnum() or c.isspace() for c in text) / max(len(text), 1)
+                        if alphanumeric_ratio < 0.5:
+                            logger.debug(f"Filtered out non-alphanumeric text: {text}")
+                            return None
+                        
+                        # Check if detected language matches expected (if English is forced)
+                        detected_lang = result.get('language', '')
+                        if forced_language == "en" and detected_lang and detected_lang != "en":
+                            # Check if text contains mostly non-English characters
+                            import re
+                            non_english = re.findall(r'[^\x00-\x7F]+', text)
+                            if len(''.join(non_english)) > len(text) * 0.3:
+                                logger.debug(f"Filtered out non-English text: {text} (detected: {detected_lang})")
+                                return None
                         
                         return {
                             'text': text,

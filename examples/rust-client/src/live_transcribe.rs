@@ -29,7 +29,7 @@ struct Args {
     server: String,
 
     /// Language code (e.g., "en", "es", "auto")
-    #[arg(short, long, default_value = "auto")]
+    #[arg(short, long, default_value = "en")]
     language: String,
 
     /// Task: transcribe or translate
@@ -151,9 +151,9 @@ fn capture_audio(tx: tokio_mpsc::Sender<AudioChunk>) -> Result<()> {
             let mut buf = buffer_clone.lock().unwrap();
             buf.extend_from_slice(data);
             
-            // Send chunks of ~0.5 seconds (8000 samples at 16kHz)
-            while buf.len() >= 8000 {
-                let chunk: Vec<i16> = buf.drain(..8000).collect();
+            // Send chunks of ~3 seconds (48000 samples at 16kHz) for better accuracy
+            while buf.len() >= 48000 {
+                let chunk: Vec<i16> = buf.drain(..48000).collect();
                 
                 // Convert i16 to bytes
                 let bytes: Vec<u8> = chunk.iter()
