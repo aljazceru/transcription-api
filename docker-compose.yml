@@ -18,7 +18,9 @@ services:
       # Server ports
       - GRPC_PORT=50051
       - WEBSOCKET_PORT=8765
+      - REST_PORT=8000
       - ENABLE_WEBSOCKET=true
+      - ENABLE_REST=true
       
       # Performance tuning
       - OMP_NUM_THREADS=4
@@ -27,6 +29,7 @@ services:
     ports:
       - "50051:50051"  # gRPC port
       - "8765:8765"    # WebSocket port
+      - "8000:8000"    # REST API port
     
     volumes:
       # Model cache - prevents re-downloading models
@@ -74,11 +77,14 @@ services:
       - TRANSFORMERS_CACHE=/app/models
       - GRPC_PORT=50051
       - WEBSOCKET_PORT=8765
+      - REST_PORT=8000
       - ENABLE_WEBSOCKET=true
+      - ENABLE_REST=true
       - CUDA_VISIBLE_DEVICES=  # No GPU
     ports:
       - "50051:50051"
       - "8765:8765"
+      - "8000:8000"
     volumes:
       - whisper-models:/app/models
     deploy:

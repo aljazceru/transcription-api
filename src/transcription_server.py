@@ -72,21 +72,21 @@ class TranscriptionSession:
 
 class ModelManager:
     """Singleton manager for Whisper model to share across all connections"""
-    
+
     _instance = None
     _lock = threading.Lock()
     _model = None
     _device = None
     _model_name = None
     _initialized = False
-    
+
     def __new__(cls):
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
         return cls._instance
-    
+
     def initialize(self, model_name: str = "large-v3"):
         """Initialize the model (only once)"""
         with self._lock:
@@ -96,16 +96,31 @@ class ModelManager:
                 self._load_model()
                 self._initialized = True
                 logger.info(f"ModelManager initialized with {model_name} on {self._device}")
-    
+
     def _load_model(self):
         """Load the Whisper model"""
         try:
             download_root = os.environ.get('TORCH_HOME', '/app/models')
+
+            # Performance optimization: Enable TF32 for better performance on Ampere GPUs
+            if self._device == "cuda":
+                torch.backends.cuda.matmul.allow_tf32 = True
+                torch.backends.cudnn.allow_tf32 = True
+                # Enable cuDNN benchmarking for optimal performance
+                torch.backends.cudnn.benchmark = True
+                logger.info("Enabled TF32 and cuDNN optimizations for CUDA")
+
             self._model = whisper.load_model(
-                self._model_name, 
-                device=self._device, 
+                self._model_name,
+                device=self._device,
                 download_root=download_root
             )
+
+            # Performance optimization: Set model to eval mode and disable gradients
+            self._model.eval()
+            for param in self._model.parameters():
+                param.requires_grad = False
+
             logger.info(f"Loaded shared Whisper model: {self._model_name} on {self._device}")
         except Exception as e:
             logger.error(f"Failed to load Whisper model: {e}")
@@ -190,17 +205,18 @@ class TranscriptionEngine:
     def transcribe_chunk(self, audio_data: bytes, language: str = "auto", vad_enabled: bool = True) -> Optional[dict]:
         """Transcribe a single audio chunk"""
         try:
-            # Convert bytes to numpy array
+            # Performance optimization: Use direct numpy operations
             audio = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
-            
+
             # Check if audio contains speech (VAD) - only if enabled
             if vad_enabled:
-                energy = np.sqrt(np.mean(audio**2))
+                # Performance optimization: Calculate energy inline to avoid redundant computation
+                energy = np.sqrt(np.mean(np.square(audio)))
                 if not self.is_speech(audio):
-                    logger.info(f"No speech detected in audio chunk (energy: {energy:.4f}), skipping transcription")
+                    logger.debug(f"No speech detected in audio chunk (energy: {energy:.4f}), skipping transcription")
                     return None
                 else:
-                    logger.info(f"Speech detected in chunk (energy: {energy:.4f})")
+                    logger.debug(f"Speech detected in chunk (energy: {energy:.4f})")
             
             if USE_SIMULSTREAMING and self.online_processor:
                 # Use SimulStreaming for real-time processing
@@ -222,24 +238,26 @@ class TranscriptionEngine:
                     # Pad audio to minimum length if needed
                     if len(audio) < SAMPLE_RATE:
                         audio = np.pad(audio, (0, SAMPLE_RATE - len(audio)))
-                    
+
                     # Use more conservative settings to reduce hallucinations
                     # Force English if specified to prevent language switching
                     forced_language = None if language == "auto" else language
                     if language == "en" or language == "english":
                         forced_language = "en"
-                    
-                    result = model.transcribe(
-                        audio,
-                        language=forced_language,
-                        fp16=self.device == "cuda",
-                        temperature=0.0,  # More deterministic, less hallucination
-                        no_speech_threshold=0.8,  # Much higher threshold for detecting non-speech
-                        logprob_threshold=-0.5,  # Stricter filtering of low probability results
-                        compression_ratio_threshold=2.0,  # Stricter filtering of repetitive results
-                        condition_on_previous_text=False,  # Don't use previous text as context (reduces hallucination chains)
-                        initial_prompt=None  # Don't use initial prompt to avoid biasing
-                    )
+
+                    # Performance optimization: Use torch.no_grad() context for inference
+                    with torch.no_grad():
+                        result = model.transcribe(
+                            audio,
+                            language=forced_language,
+                            fp16=self.device == "cuda",
+                            temperature=0.0,  # More deterministic, less hallucination
+                            no_speech_threshold=0.8,  # Much higher threshold for detecting non-speech
+                            logprob_threshold=-0.5,  # Stricter filtering of low probability results
+                            compression_ratio_threshold=2.0,  # Stricter filtering of repetitive results
+                            condition_on_previous_text=False,  # Don't use previous text as context (reduces hallucination chains)
+                            initial_prompt=None  # Don't use initial prompt to avoid biasing
+                        )
                     
                     if result and result.get('text'):
                         text = result['text'].strip()
@@ -318,12 +336,14 @@ class TranscriptionEngine:
             # Transcribe with Whisper
             model = self.get_model()
             if model:
-                result = model.transcribe(
-                    audio,
-                    language=None if config.language == "auto" else config.language,
-                    task=config.task or "transcribe",
-                    fp16=self.device == "cuda"
-                )
+                # Performance optimization: Use torch.no_grad() for inference
+                with torch.no_grad():
+                    result = model.transcribe(
+                        audio,
+                        language=None if config.language == "auto" else config.language,
+                        task=config.task or "transcribe",
+                        fp16=self.device == "cuda"
+                    )
                 
                 segments = []
                 for seg in result.get('segments', []):
@@ -489,11 +509,21 @@ class TranscriptionServicer(transcription_pb2_grpc.TranscriptionServiceServicer)
 
 async def serve_grpc(port: int = 50051):
     """Start the gRPC server"""
+    # Performance optimization: Increase max_workers based on CPU count
+    import multiprocessing
+    max_workers = min(multiprocessing.cpu_count() * 2, 20)
+
     server = grpc.aio.server(
-        futures.ThreadPoolExecutor(max_workers=10),
+        futures.ThreadPoolExecutor(max_workers=max_workers),
         options=[
             ('grpc.max_send_message_length', 100 * 1024 * 1024),  # 100MB
-            ('grpc.max_receive_message_length', 100 * 1024 * 1024),
+            ('grpc.max_receive_message_length', 100 * 1024 * 1024),  # 100MB
+            # Performance optimizations
+            ('grpc.keepalive_time_ms', 10000),
+            ('grpc.keepalive_timeout_ms', 5000),
+            ('grpc.http2.max_pings_without_data', 0),
+            ('grpc.http2.min_time_between_pings_ms', 10000),
+            ('grpc.http2.min_ping_interval_without_data_ms', 5000),
         ]
     )
     
@@ -595,23 +625,48 @@ async def serve_websocket(port: int = 8765):
         await asyncio.Future()  # Run forever
 
 
+async def serve_rest_api(host: str = "0.0.0.0", port: int = 8000):
+    """Start the REST API server"""
+    import uvicorn
+    from rest_api import app
+
+    config = uvicorn.Config(
+        app,
+        host=host,
+        port=port,
+        log_level="info",
+        access_log=True,
+        loop="asyncio"
+    )
+    server = uvicorn.Server(config)
+    logger.info(f"REST API server started on {host}:{port}")
+    await server.serve()
+
+
 async def main():
     """Main entry point"""
     grpc_port = int(os.environ.get('GRPC_PORT', '50051'))
     ws_port = int(os.environ.get('WEBSOCKET_PORT', '8765'))
+    rest_port = int(os.environ.get('REST_PORT', '8000'))
+    rest_host = os.environ.get('REST_HOST', '0.0.0.0')
+
     enable_websocket = os.environ.get('ENABLE_WEBSOCKET', 'true').lower() == 'true'
-    
+    enable_rest = os.environ.get('ENABLE_REST', 'true').lower() == 'true'
+
     # Initialize the global model manager once at startup
     logger.info("Initializing shared model manager...")
     model_manager = get_global_model_manager()
     logger.info(f"Model manager initialized with model: {model_manager._model_name}")
-    
+
     try:
         tasks = [serve_grpc(grpc_port)]
-        
+
         if enable_websocket:
             tasks.append(serve_websocket(ws_port))
-        
+
+        if enable_rest:
+            tasks.append(serve_rest_api(rest_host, rest_port))
+
         await asyncio.gather(*tasks)
     finally:
         # Cleanup on shutdown
