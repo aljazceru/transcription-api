@@ -207,7 +207,7 @@ async fn main() -> Result<()> {
     }
     
     println!("\n{}", "─".repeat(80));
-    println!("✅ Playback and transcription complete!");
+    println!("Playback and transcription complete!");
     
     // Keep the program alive until playback finishes
     time::sleep(Duration::from_secs(2)).await;

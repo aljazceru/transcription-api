@@ -4,14 +4,14 @@ A high-performance, standalone transcription service with **REST API**, **gRPC**
 
 ## Features
 
-- 🚀 **Multiple API Interfaces**: REST API, gRPC, and WebSocket
-- 🎯 **High Performance**: Optimized with TF32, cuDNN, and efficient batching
-- 🧠 **Whisper Models**: Support for all Whisper models (tiny to large-v3)
-- 🎤 **Real-time Streaming**: Bidirectional streaming for live transcription
-- 🔇 **Voice Activity Detection**: Smart VAD to filter silence and noise
-- 🚫 **Anti-hallucination**: Advanced filtering to reduce Whisper hallucinations
-- 🐳 **Docker Ready**: Easy deployment with GPU support
-- 📊 **Interactive Docs**: Auto-generated API documentation (Swagger/OpenAPI)
+- **Multiple API Interfaces**: REST API, gRPC, and WebSocket
+- **High Performance**: Optimized with TF32, cuDNN, and efficient batching
+- **Whisper Models**: Support for all Whisper models (tiny to large-v3)
+- **Real-time Streaming**: Bidirectional streaming for live transcription
+- **Voice Activity Detection**: Smart VAD to filter silence and noise
+- **Anti-hallucination**: Advanced filtering to reduce Whisper hallucinations
+- **Docker Ready**: Easy deployment with GPU support
+- **Interactive Docs**: Auto-generated API documentation (Swagger/OpenAPI)
 
 ## Quick Start
 

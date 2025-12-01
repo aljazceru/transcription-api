@@ -118,7 +118,7 @@ async fn main() -> Result<()> {
 fn list_audio_devices() -> Result<()> {
     let host = cpal::default_host();
     
-    println!("\n📊 Available Audio Devices:");
+    println!("\n Available Audio Devices:");
     println!("{}", "─".repeat(80));
     
     // List input devices
@@ -138,10 +138,10 @@ fn list_audio_devices() -> Result<()> {
     
     // Show default device
     if let Some(device) = host.default_input_device() {
-        println!("\n⭐ Default Input: {}", device.name()?);
+        println!("\n Default Input: {}", device.name()?);
     }
     
-    println!("\n💡 Tips for capturing system audio:");
+    println!("\n Tips for capturing system audio:");
     println!("  Linux: Look for devices with 'monitor' in the name (PulseAudio/PipeWire)");
     println!("  Windows: Install VB-Cable or enable 'Stereo Mix' in sound settings");
     println!("  macOS: Install BlackHole or Loopback for system audio capture");
